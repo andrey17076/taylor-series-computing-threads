@@ -83,8 +83,6 @@ void count_member(void *arg) {
 
     *(thread_params->thread_status) = ST_FREE;
 
-    while (*(thread_params->thread_status) != ST_NULL);
-
     free(thread_params);
     return;
 }
@@ -102,10 +100,14 @@ void print_taylor_set_elements(FILE* tmp_file) {
         for (j = 0; j < TAYLOR_SET_LENGTH; j++) {
 
             int thread_id = wait_for_thread(TAYLOR_SET_LENGTH);
-            THREADS_STATUS[thread_id] = ST_NULL;
-            if (pthread_join(THREADS[thread_id], NULL) == -1){
-                print_err(strerror(errno), NULL);
-            };
+
+            if (THREADS_STATUS[thread_id] == ST_FREE) {
+                if (pthread_join(THREADS[thread_id], NULL) == -1){
+                    print_err(strerror(errno), NULL);
+                };
+            }
+
+            THREADS_STATUS[thread_id] = ST_BUSY;
 
             thread_params = malloc(sizeof(thread_params_t));
             thread_params->thread_status = &(THREADS_STATUS[thread_id]);
@@ -113,15 +115,10 @@ void print_taylor_set_elements(FILE* tmp_file) {
             thread_params->taylors_set_member_index = j;
             thread_params->file = tmp_file;
 
-            memset(&thread, 0, sizeof(pthread_t));
-            THREADS_STATUS[thread_id] = ST_BUSY;
-
-            if (pthread_create(&thread, &pthread_attr, &count_member, thread_params) == -1) {
+            if (pthread_create(&THREADS[thread_id], &pthread_attr, &count_member, thread_params) == -1) {
                 print_err(strerror(errno), NULL);
                 return;
             };
-
-            THREADS[thread_id] = thread;
         }
     }
 
@@ -160,22 +157,15 @@ void print_result(FILE* tmp_file, FILE* result_file) {
 int wait_for_thread(int threads_count) {
     int i = 0;
     while (THREADS_STATUS[i] == ST_BUSY) {
-        i++;
-        if (i == threads_count) {
-            i = 0;
-        }
+        i = (++i == threads_count) ? 0 : i;
     }
     return i;
 }
 
 char all_finished(int threads_count) {
-    int i;
-    for (i = 0; (i < threads_count); i++){
-        if (THREADS_STATUS[i] != ST_FREE){
-            return 0;
-        }
-    }
-    return 1;
+    int i = 0;
+    while ((i != threads_count) && (THREADS_STATUS[i++] != ST_BUSY));
+    return i == threads_count;
 }
 
 int main (int argc, char const *argv[]) {
